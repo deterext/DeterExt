@@ -7,11 +7,31 @@ var modified_APIs = (function(){
 var __counter__ = 0;
 
 // Override for the performance.now function - increments and returns our counter
-var old_performance = performance.now;
+let deter_performance_base = performance.timeOrigin;
+let old_performance = performance.now;
 performance.now = function(){
     __counter__++;
     return __counter__;
 }
+
+/*let deter_datenow_base = Date.now();
+let old_datenow = Date.now;
+Date.now = function(){
+    __counter__++;
+    return Math.floor(deter_performance_base) + __counter__;
+}
+
+//let deter_date_gettime = (new Date()).getTime();
+let old_date_getTime = Date.prototype.getTime;
+Date.prototype.getTime = function(){
+    __counter__+=0.01;
+    d = new Date(this);
+    t = old_date_getTime.apply(d);
+    rounded_t = Math.floor(t / 1e2) * 1e2;
+    //return Math.floor(rounded_t);
+    return t;
+    //return deter_performance_base + __counter__;
+}*/
 
 /** The PriorityQueue class containing our queue structure */
 function PriorityQueue() {
@@ -188,7 +208,7 @@ Element.prototype.appendChild = function(){
     }
 
     // Average duration to append an element to the page we want to show every time
-    let avgDuration = 1.132;
+    let avgDuration = 1.5;
 
     // Append the blocking element with flag 1 to the queue
     arguments[0].endTime = __counter__ + avgDuration;
@@ -314,6 +334,259 @@ var __deter_last__ = function(){
         __deter_dispatch__(1);
 }
 
+/*redefine Date*/
+let deter_Date = Date;
+
+Date = function(param){
+  if(typeof(param) == "undefined"){
+	__counter__++;
+  	this.timestamp = Math.floor(deter_performance_base + __counter__);
+  }
+  else{
+  	d = new deter_Date(param);
+  	this.timestamp = d.getTime();
+  }
+}
+
+Date.prototype.getFullYear = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getFullYear();
+}
+
+Date.prototype.setFullYear = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setFullYear(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getUTCFullYear = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getUTCFullYear();
+}
+
+Date.prototype.setUTCFullYear = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setUTCFullYear(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getMonth = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getMonth();
+}
+
+Date.prototype.setMonth = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setMonth(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getUTCMonth = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getUTCMonth();
+}
+
+Date.prototype.setUTCMonth = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setUTCMonth(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getDate = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getDate();
+}
+
+Date.prototype.setDate = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setDate(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getUTCDate = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getUTCDate();
+}
+
+Date.prototype.setUTCDate = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setUTCDate(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getHours = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getHours();
+}
+
+Date.prototype.setHours = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setHours(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getUTCHours = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getUTCHours();
+}
+
+Date.prototype.setUTCHours = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setUTCHours(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getMinutes = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getMinutes();
+}
+
+Date.prototype.setMinutes = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setMinutes(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getUTCMinutes = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getUTCMinutes();
+}
+
+Date.prototype.setUTCMinutes = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setUTCMinutes(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getSeconds = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getSeconds();
+}
+
+Date.prototype.setSeconds = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setSeconds(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getUTCSeconds = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getUTCSeconds();
+}
+
+Date.prototype.setUTCSeconds = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setUTCSeconds(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getMilliseconds = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getMilliseconds();
+}
+
+Date.prototype.setMilliseconds = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setMilliseconds(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getUTCMilliseconds = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getUTCMilliseconds();
+}
+
+Date.prototype.setUTCMilliseconds = function(param){
+        d = new deter_Date(this.timestamp);
+        d.setUTCMilliseconds(param);
+        this.timestamp = d.getTime();
+}
+
+Date.prototype.getDay = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getDay();
+}
+
+Date.prototype.getUTCDay = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getUTCDay();
+}
+
+Date.prototype.getTimezoneOffset = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getTimezoneOffset();
+}
+
+Date.prototype.toDateString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.getTimezoneOffset();
+}
+
+Date.prototype.toGMTString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toGMTString();
+}
+
+Date.prototype.toISOString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toISOString();
+}
+
+Date.prototype.toJSON = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toJSON();
+}
+
+Date.prototype.toLocaleDateString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toLocaleDateString();
+}
+
+Date.prototype.toLocaleString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toLocaleString();
+}
+
+Date.prototype.toLocaleTimeString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toLocaleTimeString();
+}
+
+Date.prototype.toString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toString();
+}
+
+Date.prototype.toTimeString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toTimeString();
+}
+
+Date.prototype.toUTCString = function(){
+	d = new deter_Date(this.timestamp);
+	return d.toUTCString();
+}
+
+Date.prototype.setTime = function(time){
+  this.timestamp = time;
+}
+
+Date.prototype.getTime = function(){
+	return this.timestamp;
+}
+
+Date.prototype.valueOf = function(){
+	return this.timestamp;
+}
+
+deter_date_base = deter_Date.now();
+Date.now = function(){
+	__counter__+=0.1;
+	return Math.floor(deter_date_base + __counter__);
+}
+Date.now = deter_Date.now;
+Date.UTC = deter_Date.UTC;
+Date.parse = deter_Date.parse;
 
 return [performance.now, setTimeout, requestAnimationFrame, Element.prototype.appendChild, __counter__];
 })();
