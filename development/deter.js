@@ -72,6 +72,8 @@ var modified_worker = (function () {
 	// Create our queue
 	var __event_queue__ = new deter_pq();
 
+	let enable_recover_clock = false;
+
 
 	// Push an element of flag 1 to the queue that will block queue execution when at the head. 
 	// Also, push an empty element with a priority of the current timestamp and a flag of 2 to the queue.
@@ -98,8 +100,10 @@ var modified_worker = (function () {
 
 	let __event_recover_clock__ = function () {
 		let e = new deter_element(parseInt(old_performance.call(performance)) - deter_performance_base, null, null, null, 2);
-		__event_queue__.push(e);
+		if(enable_recover_clock)__event_queue__.push(e);
 	}
+
+	setTimeout(function(){enable_recover_clock = true;},5000);
 
 
 	// Push an element of flag 0 to the queue that will be ran immediately when at the head of the queue.
@@ -124,7 +128,7 @@ var modified_worker = (function () {
 			else if (e.flag === 0) {
 				_deter_counter_ = e.endTime;
 
-				if (e.func != null && e.finish == false) {
+				if (e.func != null && e.finish == false && typeof e.func === 'function' && typeof e.func.apply !== 'undefined') {
 					e.finish = true;
 					try {
 						e.func.apply(e.context, e.params);
@@ -136,6 +140,7 @@ var modified_worker = (function () {
 			// If first element has flag 2, it is simply a timestamp to move our counter forward
 			else if (e.flag === 2) {
 				if (e.endTime > _deter_counter_ && __event_queue__.size() == 0) {
+				//if (__event_queue__.size() == 0) {
 					_deter_counter_ = e.endTime;
 				}
 			}
@@ -181,6 +186,7 @@ var modified_worker = (function () {
 		params[0] = deter_cb;
 		let id = old_setTimeout.apply(null, params);
 		deter_setTimeout_event[id] = deter_event;
+		old_setTimeout(__event_end__, delay + 5 ,deter_event);
 		return id;
 	}
 
@@ -263,7 +269,9 @@ var modified_worker = (function () {
 		arguments[0].deter_event = __event_begin__(avgDuration, null, null, null);
 		//arguments[0].deter_event = new deter_element( _deter_counter_ + avgDuration, null, arguments[0], null, 0);
 		//arguments[0].deter_event.finish = true;
-		old_setTimeout(function(){arguments[0].deter_event.finish = true;}, 1000, arguments[0]);
+		old_setTimeout(function () {
+			arguments[0].deter_event.finish = true;
+		}, 1000, arguments[0]);
 
 		arguments[0].old_onload_handler = arguments[0].onload;
 
@@ -272,7 +280,7 @@ var modified_worker = (function () {
 			this.deter_event.func = this.old_onload_handler;
 			this.deter_event.context = this;
 			this.deter_event.params = Array.prototype.slice.call(arguments);
-			if(this.deter_event.finish == false)__event_end__(this.deter_event);
+			if (this.deter_event.finish == false) __event_end__(this.deter_event);
 			else __event_insert__(this.deter_event.endTime, this.deter_event.func, this.deter_event.context, this.deter_event.params);
 			if (this.tagName == 'SCRIPT' && have_next_window_onerror) {
 				have_next_window_onerror = false;
@@ -280,12 +288,15 @@ var modified_worker = (function () {
 			}
 		}
 
+		try{
 		Object.defineProperty(arguments[0], 'onload', {
 			set: function (e) {
 				this.old_onload_handler = e;
 
 			}
 		});
+		}
+		catch(e){}
 
 		arguments[0].old_onerror_handler = arguments[0].onerror;
 
@@ -293,15 +304,17 @@ var modified_worker = (function () {
 			this.deter_event.func = this.old_onerror_handler;
 			this.deter_event.context = this;
 			this.deter_event.params = Array.prototype.slice.call(arguments);
-			if(this.deter_event.finish == false)__event_end__(this.deter_event);
+			if (this.deter_event.finish == false) __event_end__(this.deter_event);
 			else __event_insert__(this.deter_event.endTime, this.deter_event.func, this.deter_event.context, this.deter_event.params);
 		}
 
+		try{
 		Object.defineProperty(arguments[0], 'onerror', {
 			set: function (e) {
 				this.old_onerror_handler = e;
 			}
 		});
+		} catch(e) {}
 
 		return old_appendChild.apply(this, arguments);
 	}
@@ -309,21 +322,26 @@ var modified_worker = (function () {
 	let __deter_old_requestAnimationFrame__ = requestAnimationFrame;
 	let __deter_requestAnimationFrame_map__ = {};
 	requestAnimationFrame = function (cb) {
-		let time = 100;
-		let deter_event = __event_begin__(time, cb, null, null);
-		var __deter_cb__ = function () {
+		let time = 20;
+		let deter_event = __event_begin__(time, cb, null, [performance.now()]);
+		let __deter_cb__ = function () {
 			__event_end__(deter_event);
 		}
 
 
 		let id = __deter_old_requestAnimationFrame__(__deter_cb__);
+		//let id = __deter_old_requestAnimationFrame__(cb);
 		__deter_requestAnimationFrame_map__[id] = deter_event;
+		old_setTimeout(__event_end__, 20, deter_event);
 		return id;
 	}
 
 	let __deter_old_cancelAnimationFrame__ = cancelAnimationFrame;
 	cancelAnimationFrame = function (requestID) {
-		__deter_requestAnimationFrame_map__[requestID].finish = true;
+		if(requestID in __deter_requestAnimationFrame_map__){
+			__deter_requestAnimationFrame_map__[requestID].flag = 0;
+			__deter_requestAnimationFrame_map__[requestID].finish = true;
+		}
 		return __deter_old_cancelAnimationFrame__(requestID);
 	}
 
@@ -365,6 +383,14 @@ var modified_worker = (function () {
 
 		}
 	});
+
+
+	let old_object_defineProperty = Object.defineProperty;
+	Object.defineProperty = function(){
+		let params = Array.prototype.slice.call(arguments);
+		if(params[0] == window && (params[1] == 'onmessage' || params[1] == 'onerror'))return;
+		old_object_defineProperty.apply(Object, params);
+	}
 
 	var worker_inject_script = function () {
 
@@ -463,8 +489,8 @@ var modified_worker = (function () {
 			}
 
 			let __event_recover_clock__ = function () {
-				let e = new deter_element(parseInt(old_performance.call(performance)) - deter_performance_base, null, null, null, 2);
-				__event_queue__.push(e);
+				let e = new deter_element(parseInt(old_performance.call(performance)) - Math.floor(deter_performance_base), null, null, null, 2);
+				//__event_queue__.push(e);
 			}
 
 
@@ -491,12 +517,12 @@ var modified_worker = (function () {
 					else if (e.flag === 0) {
 						_deter_counter_ = e.endTime;
 
-						if (e.func != null && e.finish == false) {
+						if (e.func != null && e.finish == false && typeof e.func === 'function' && typeof e.func.apply !== 'undefined') {
 							e.finish = true;
 							try {
 								e.func.apply(e.context, e.params);
 							} catch (err) {
-								console.log(err);
+								//console.log(err);
 							}
 						}
 					}
@@ -547,7 +573,7 @@ var modified_worker = (function () {
 				params[0] = deter_cb;
 				let id = old_setTimeout.apply(null, params);
 				deter_setTimeout_event[id] = deter_event;
-				//old_setTimeout(__event_end__, delay + 1, deter_event);
+				old_setTimeout(__event_end__, delay + 5, deter_event);
 				return id;
 			}
 
@@ -594,28 +620,35 @@ var modified_worker = (function () {
 			let __deter_postMessage_map__ = {};
 			postMessage = function () {
 				let params = Array.prototype.slice.call(arguments);
-				//let deter_event = __event_begin__(100, null, null, null);
+				let deter_event = __event_begin__(5, null, null, null);
 				//__deter_postMessage_map__[params[0]] = deter_event;
+				//let e = new deter_element(_deter_counter_ + 10, null, null, null, 1);
+				//__deter_old_postMessage__.apply(this, [{
+				//	deter_topic: '_deter_postmessage_event_',
+				//	deter_postmessage_msg: params[0],
+				//	deter_buf: e
+				//}]);
 				__deter_old_postMessage__.apply(self, params);
-				//old_setTimeout(__event_end__, 5, deter_event);
+				old_setTimeout(__event_end__, 5, deter_event);
 			}
 
+			var __deter_old_this_onmessage__ = null;
 			onmessage = function () {
 				let params = Array.prototype.slice.call(arguments);
-      	if ("deter_topic" in params[0].data){
-        	if(params[0].data.deter_topic == "_deter_postmessage_event_"){
-          	let e = params[0].data.deter_buf;
-          	let msg = params[0].data.deter_postmessage_msg;
-            __deter_postMessage_map__[msg] = e;
-            __event_queue__.push(e);
-          }
-          else if(params[0].data.deter_topic == "_deter_init_"){
-          	deter_performance_base = params[0].data.deter_buf[0];
-          }
-        	return;
-        }
+				if (typeof params[0].data ==='object' && "deter_topic" in params[0].data) {
+					if (params[0].data.deter_topic == "_deter_postmessage_event_") {
+						let e = params[0].data.deter_buf;
+						let msg = params[0].data.deter_postmessage_msg;
+						__deter_postMessage_map__[msg] = e;
+						__event_queue__.push(e);
+						old_setTimeout(__event_end__, 20, e);
+					} else if (params[0].data.deter_topic == "_deter_init_") {
+						deter_performance_base = params[0].data.deter_buf[0];
+					}
+					return;
+				}
 				let msg = params[0].data;
-				if (msg in __deter_postMessage_map__) {
+				if (msg in __deter_postMessage_map__ && __deter_postMessage_map__[msg].finish == false && __deter_postMessage_map__[msg].flag == 1) {
 					let deter_event = __deter_postMessage_map__[msg];
 					deter_event.func = __deter_old_this_onmessage__;
 					deter_event.context = self;
@@ -641,12 +674,38 @@ var modified_worker = (function () {
 			});
 
 			return {
-				src: "user worker path here"
+				src: "user worker file here",
+				dir: "user dir here",
+				domain: "user domain here",
 			};
 
 		})();
 
-		self.importScripts(kernelWorkerInterface.src);
+		//console.log(kernelWorkerInterface.src);
+		//console.log(kernelWorkerInterface.dir);
+		//console.log(kernelWorkerInterface.domain);
+		try {
+			//console.log('kernelWorkerInterface.src');
+			//console.log(kernelWorkerInterface.src);
+			importScripts(kernelWorkerInterface.src);
+		} catch (err) {
+			try{
+				if(kernelWorkerInterface.src.charAt(0) == '/'){
+					//console.log('kernelWorkerInterface.domain + kernelWorkerInterface.src');
+					//console.log(kernelWorkerInterface.domain + kernelWorkerInterface.src);
+					importScripts(kernelWorkerInterface.domain + kernelWorkerInterface.src);
+				}
+				else{
+					//console.log('kernelWorkerInterface.dir' + '/' + 'kernelWorkerInterface.src');
+					//console.log(kernelWorkerInterface.dir + '/' + kernelWorkerInterface.src);
+					importScripts(kernelWorkerInterface.dir + '/' + kernelWorkerInterface.src);
+				}
+			} catch (err) { 
+				console.log("can't load worker"); 
+				console.log(kernelWorkerInterface.dir); 
+				console.log(kernelWorkerInterface.src); 
+			}
+		}
 
 	}
 
@@ -654,14 +713,25 @@ var modified_worker = (function () {
 	var kernelInterface = (function () {
 		kernelWorker = Worker;
 		constructWorker = function (userWorker) {
+			let loc = window.location.href;
+			let dir = loc.substring(0, loc.lastIndexOf('/'));
+			let domain = window.location.protocol + '//' + window.location.hostname;
 
-			var worker_inject_script_txt = worker_inject_script.toString();
-			worker_inject_script_txt = worker_inject_script_txt.replace("user worker path here", userWorker.name);
+			let worker_inject_script_txt = worker_inject_script.toString();
+			let file_name = userWorker.name;
+			worker_inject_script_txt = worker_inject_script_txt.replace("user worker file here", file_name).replace("user dir here", dir).replace("user domain here", domain);
 
-			var blob = new Blob(["(" + worker_inject_script_txt + ")()"], {
+			let blob = new Blob(["(" + worker_inject_script_txt + ")()"], {
 				type: 'application/javascript'
 			});
-			var worker = new _deter_old_worker_(URL.createObjectURL(blob));
+			console.log(userWorker.name);
+			console.log(userWorker.name.substring(0,5));
+			if(userWorker.name.substring(0,5) == "/maps"){
+				var worker = new _deter_old_worker_(file_name);
+			}
+			else{
+				var worker = new _deter_old_worker_(URL.createObjectURL(blob));
+			}
 			return worker;
 		};
 		return {
@@ -689,39 +759,105 @@ var modified_worker = (function () {
 				obj[prop] = val;
 			}
 		},
-    get: function(target, name, receiver) {
-    	if (name in target.__proto__) {
-        if(name == "postMessage"){
-        	return function(...args) {
-          	let e = new deter_element(_deter_counter_ + 10, null, null, null, 1);
-          	target.postMessage({deter_topic: '_deter_postmessage_event_',deter_postmessage_msg: args[0] ,deter_buf: e});
-          	target[name](args);
-      		};
-        } else {
-        	return function(...args) {
-          	target[name](args);
-      		};
-        }
-    	}
-    },
-		construct: (obj, prop) => {
-			if(prop[0].substring(0,5) == "blob:" || prop[0].substring(0,5) == "http:" || prop[0].substring(0,6) == "https:")url = prop[0];
-			else{
-				var loc = window.location.href;
-				var dir = loc.substring(0, loc.lastIndexOf('/'));
-				url = dir + '/' + prop[0];
+		get: function (target, name, receiver) {
+			if (name in target.__proto__) {
+				if (name == "postMessage") {
+					return function (...args) {
+						let e = new deter_element(_deter_counter_ + 10, null, null, null, 1);
+						let res = target.postMessage({
+							deter_topic: '_deter_postmessage_event_',
+							deter_postmessage_msg: args[0],
+							deter_buf: e
+						});
+						return target.postMessage(args);
+					};
+				} else {
+					if (typeof target[name] === "function"){
+						return function (...args) { return target[name](args); };
+					} else {
+						return target[name];
+					}
+				}
 			}
+		}
+	}
+	var worker_creator = {
+		construct: (obj, prop) => {
+			url = prop[0];
 			var myworker = {
 				name: url
 			};
 			let realworker = kernelInterface.constructWorker(myworker);
-			let res = new Proxy(realworker, worker_handler);
-      realworker.postMessage({deter_topic: '_deter_init_', deter_buf: [deter_performance_base]});
-			return res;
+			//let res = new Proxy(realworker, worker_handler);
+			let _deter_old_postmessage_ = realworker.postMessage;
+			realworker.postMessage = function(){
+				let params = Array.prototype.slice.call(arguments);
+				let e = new deter_element(_deter_counter_ + 10, null, null, null, 1);
+				let res = _deter_old_postmessage_.apply(this, [{
+					deter_topic: '_deter_postmessage_event_',
+					deter_postmessage_msg: params[0],
+					deter_buf: e
+				}]);
+				return _deter_old_postmessage_.apply(this, params);
+			}
+			realworker._deter_old_onmessage_ = realworker.onmessage;
+			realworker.__deter_postMessage_placeholder_event__ = null;
+			realworker.onmessage = function(...args){
+				let params = Array.prototype.slice.call(arguments);
+				//if(this._deter_old_onmessage_ != null)this._deter_old_onmessage_.apply(null, params);
+				//else return _deter_old_onmessage_.apply(this, params);
+					//console.log(params[0].data);
+				if (typeof params[0].data === "object" && "deter_topic" in params[0].data) {
+					//console.log("palceholder");
+					if (params[0].data.deter_topic == "_deter_postmessage_event_") {
+						let e = params[0].data.deter_buf;
+						this.__deter_postMessage_placeholder_event__ = e;
+						__event_queue__.push(e);
+						old_setTimeout(__event_end__, 20, e);
+					}
+					return;
+				}
+				if(this.__deter_postMessage_placeholder_event__ != null){
+					//console.log("match palceholder");
+					let deter_event = this.__deter_postMessage_placeholder_event__;
+					let onmessage_event_handler = {
+						get: (obj, prop) => {
+							return prop == 'timeStamp' ? deter_event.endTime : obj[prop];
+						}
+					};
+					let deter_onmessage_event = new Proxy(params[0], onmessage_event_handler);
+					deter_event.func = this._deter_old_onmessage_;
+					deter_event.context = this;
+					deter_event.params = [deter_onmessage_event];
+					__event_end__(deter_event);
+				}
+				else{
+					let tmp_timeStamp = _deter_counter_ + 10;
+					let onmessage_event_handler = {
+						get: (obj, prop) => {
+							return prop == 'timeStamp' ? tmp_timeStamp : obj[prop];
+						}
+					};
+					let deter_onmessage_event = new Proxy(params[0], onmessage_event_handler);
+					__event_insert__(tmp_timeStamp, this._deter_old_onmessage_, this, [deter_onmessage_event]);
+				}
+			}
+			Object.defineProperty(realworker, 'onmessage', {
+				set: function (e) {
+					this._deter_old_onmessage_ = e;
+
+				}
+			});
+			realworker.postMessage({
+				deter_topic: '_deter_init_',
+				deter_buf: [deter_performance_base]
+			});
+			//return res;
+			return realworker;
 		}
 	}
 
-	Worker = new Proxy(Function, worker_handler);
+	Worker = new Proxy(Function, worker_creator);
 
 	//return {"__event_queue__":__event_queue__};
 
@@ -757,10 +893,10 @@ function unit_test_worker2() {
 		/*for (var i = 1; i <= 10050; i++) {
 			postMessage(i);
 		}*/
-    onmessage = function(e){
-  		console.log(performance.now());
-    	console.log("real worker onmessage: " + e.data);
-    }
+		onmessage = function (e) {
+			console.log(performance.now());
+			console.log("real worker onmessage: " + e.data);
+		}
 	}
 
 	var blob = new Blob(["(" + worker_function.toString() + ")()"], {
@@ -787,11 +923,11 @@ function unit_test_worker2() {
 			requestAnimationFrame(callback);
 		}
 	}
-  console.log(performance.now());
-  worker.postMessage("Hello from main");
+	console.log(performance.now());
+	worker.postMessage("Hello from main");
 }
 
-unit_test_worker2();
+//unit_test_worker2();
 `;
 
 document.documentElement.appendChild(script);
