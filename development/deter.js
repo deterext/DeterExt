@@ -69,10 +69,13 @@ var modified_worker = (function () {
 	// Our global counter variable
 	let _deter_counter_ = 0;
 
+	let shared_counter_buffer = new SharedArrayBuffer(16);
+	let shared_counter = new Float32Array(shared_counter_buffer);
+
 	// Create our queue
 	var __event_queue__ = new deter_pq();
 
-	let enable_recover_clock = false;
+	let enable_recover_clock = true;
 
 
 	// Push an element of flag 1 to the queue that will block queue execution when at the head. 
@@ -98,12 +101,43 @@ var modified_worker = (function () {
 		__deter_dispatch__(0);
 	}
 
-	let __event_recover_clock__ = function () {
+	let __add_recover_clock_event__ = function () {
 		let e = new deter_element(parseInt(old_performance.call(performance)) - deter_performance_base, null, null, null, 2);
 		if(enable_recover_clock)__event_queue__.push(e);
 	}
 
-	setTimeout(function(){enable_recover_clock = true;},5000);
+	let __recover_clock_status__ = {};
+	let __recover_clock_id__ = 0;
+	var __recover_clock_acq__ = function(recover_clock_event){
+		if(deter_workers.length == 0){
+			if (recover_clock_event.endTime > _deter_counter_ && __event_queue__.size() == 0) {
+				_deter_counter_ = recover_clock_event.endTime;
+				shared_counter[0] = recover_clock_event.endTime;
+				return;
+			}
+		} 
+		let tmp = __recover_clock_id__;
+		__recover_clock_id__++;
+		__recover_clock_status__[tmp] = [deter_workers.length,recover_clock_event];
+		for(let i = 0; i < deter_workers.length; i++){
+			deter_workers[i].postMessage({
+				deter_topic: '_deter_recover_clock_',
+				deter_buf: tmp
+			});
+		}
+	}
+
+	var __recover_clock_ack__ = function(id){
+		if(id in __recover_clock_status__){
+			__recover_clock_status__[id][0]--;
+			if(__recover_clock_status__[id][0] == 0){
+				_deter_counter_ = __recover_clock_status__[id][1].endTime;
+				shared_counter[0] = __recover_clock_status__[id][1].endTime;
+			}
+		}
+	}
+
+	//setTimeout(function(){enable_recover_clock = true;},5000);
 
 
 	// Push an element of flag 0 to the queue that will be ran immediately when at the head of the queue.
@@ -114,7 +148,7 @@ var modified_worker = (function () {
 	}
 
 	var __deter_dispatch__ = function (flag) {
-		__event_recover_clock__();
+		__add_recover_clock_event__();
 
 		while (__event_queue__.size() > 0) {
 			if (__event_queue__.top().flag == 1 && __event_queue__.top().finish == false) break;
@@ -127,6 +161,7 @@ var modified_worker = (function () {
 			// If the first element has flag 0, pop and run the callback, and assign counter to its priority
 			else if (e.flag === 0) {
 				_deter_counter_ = e.endTime;
+				shared_counter[0] = e.endTime;
 
 				if (e.func != null && e.finish == false && typeof e.func === 'function' && typeof e.func.apply !== 'undefined') {
 					e.finish = true;
@@ -139,10 +174,12 @@ var modified_worker = (function () {
 			}
 			// If first element has flag 2, it is simply a timestamp to move our counter forward
 			else if (e.flag === 2) {
-				if (e.endTime > _deter_counter_ && __event_queue__.size() == 0) {
+				__recover_clock_acq__(e);
+				/*if (e.endTime > _deter_counter_ && __event_queue__.size() == 0) {
 				//if (__event_queue__.size() == 0) {
 					_deter_counter_ = e.endTime;
-				}
+					
+				}*/
 			}
 			// Otherwise, if dispatch was called with flag 2, pop the first element. Otherwise, break.
 			else {}
@@ -257,6 +294,59 @@ var modified_worker = (function () {
 	let old_appendChild = Element.prototype.appendChild;
 	Element.prototype.appendChild = function () {
 
+		if (arguments[0].tagName == 'DIV'){
+
+			let target = arguments[0];
+			
+			target.old_animationstart = null;
+			let animationstart = function(){
+				let params = Array.prototype.slice.call(arguments);
+				target.animation_deter_event = __event_begin__(0, null, null, null);
+				old_setTimeout(
+					function(e){
+						if(!target.animation_deter_event.finish)__event_end__(e)
+					}, 3000, target.animation_deter_event);
+				
+				if(target.old_animationstart != null)return target.old_animationstart.apply(target, params);
+			}
+			arguments[0].addEventListener("webkitAnimationStart",animationstart);
+			arguments[0].addEventListener("animationstart",animationstart);
+
+			/*Object.defineProperty(arguments[0], 'onwebkitanimationstart', {
+				set: function (e) {
+					arguments[0].old_animationstart = e;
+				}
+			});
+			Object.defineProperty(arguments[0], 'onanimationstart', {
+				set: function (e) {
+					arguments[0].old_animationstart = e;
+				}
+			});*/
+
+			target.old_animationend = null;
+			let animationend = function(){
+				console.log("here");
+				console.log(target.old_animationend);
+				let params = Array.prototype.slice.call(arguments);
+				__event_end__(target.animation_deter_event);
+				if(target.old_animationstart != null)return target.old_animationend.apply(target, params);
+			}
+			arguments[0].addEventListener("webkitAnimationEnd",animationend, arguments[0]);
+			arguments[0].addEventListener("animationend",animationend, arguments[0]);
+
+			/*Object.defineProperty(arguments[0], 'onwebkitanimationend', {
+				set: function (e) {
+					arguments[0].old_animationend = e;
+				}
+			});
+			Object.defineProperty(arguments[0], 'onanimationend', {
+				set: function (e) {
+					arguments[0].old_animationend = e;
+				}
+			});*/
+
+		}
+
 		// If the element being appended is not of concern, do it the old way
 		if (arguments[0].tagName != 'SCRIPT' && arguments[0].tagName != 'IMG') {
 			return old_appendChild.apply(this, arguments);
@@ -315,6 +405,7 @@ var modified_worker = (function () {
 			}
 		});
 		} catch(e) {}
+
 
 		return old_appendChild.apply(this, arguments);
 	}
@@ -386,11 +477,42 @@ var modified_worker = (function () {
 
 
 	let old_object_defineProperty = Object.defineProperty;
-	Object.defineProperty = function(){
-		let params = Array.prototype.slice.call(arguments);
-		if(params[0] == window && (params[1] == 'onmessage' || params[1] == 'onerror'))return;
-		old_object_defineProperty.apply(Object, params);
+	Object.defineProperty = function(obj, prop, val){
+		//let params = Array.prototype.slice.call(arguments);
+		//console.log(params);
+		//if(obj == window && "set" in val && (prop == 'onmessage' || prop == 'onerror'))delete val["set"];
+		if(obj == window && "set" in val && (prop == 'onmessage' || prop == 'onerror'))return window;
+ 		res = old_object_defineProperty(obj, prop, val);
+		//console.log(res);
+		return res;
+		//old_object_defineProperty.apply(Object, params);
 	}
+
+	
+	let old_atomics_add = Atomics.add;
+	Atomics.add = function(){
+		let params = Array.prototype.slice.call(arguments);
+		let eet = shared_counter[1] + 1;
+		shared_counter[1] = eet;
+		let deter_event = __event_insert__(eet, old_atomics_add, null, params);
+	}
+
+	let old_Uint32Array = Uint32Array;
+	/*Uint32Array = function(buffer){
+		real_array = new old_Uint32Array(buffer);
+		var handler = {
+    			set: function(obj, prop, val) {
+				let eet = shared_counter[1] + 2;
+				shared_counter[1] = eet;
+				let deter_event = __event_insert__(eet, function(){obj[prop]=val;}, null, null);
+				return true;
+    			},
+			get: function(obj, prop) {
+				return obj[prop];
+			}
+		};
+		return new Proxy(real_array, handler);
+	}*/
 
 	var worker_inject_script = function () {
 
@@ -460,6 +582,7 @@ var modified_worker = (function () {
 
 			// Our global counter variable
 			let _deter_counter_ = 0;
+			var shared_counter = [0,0,0,0];
 
 			// Create our queue
 			var __event_queue__ = new deter_pq();
@@ -488,7 +611,7 @@ var modified_worker = (function () {
 				__deter_dispatch__(0);
 			}
 
-			let __event_recover_clock__ = function () {
+			let __add_recover_clock_event__ = function () {
 				let e = new deter_element(parseInt(old_performance.call(performance)) - Math.floor(deter_performance_base), null, null, null, 2);
 				//__event_queue__.push(e);
 			}
@@ -503,10 +626,17 @@ var modified_worker = (function () {
 			}
 
 			var __deter_dispatch__ = function (flag) {
-				__event_recover_clock__();
+				//__add_recover_clock_event__();
 
 				while (__event_queue__.size() > 0) {
-					if (__event_queue__.top().flag == 1 && __event_queue__.top().finish == false) break;
+					if (__event_queue__.top().endTime > shared_counter[0]){
+						break;
+					}
+					if (__event_queue__.top().flag == 1 && __event_queue__.top().finish == false){
+						//old_setTimeout(function(e){e.finish=true;}, 5, __event_queue__.top());
+						__event_queue__.top().finish = true;
+						break;
+					}
 
 					let e = __event_queue__.pop();
 
@@ -573,7 +703,7 @@ var modified_worker = (function () {
 				params[0] = deter_cb;
 				let id = old_setTimeout.apply(null, params);
 				deter_setTimeout_event[id] = deter_event;
-				old_setTimeout(__event_end__, delay + 5, deter_event);
+				old_setTimeout(__event_end__, delay, deter_event);
 				return id;
 			}
 
@@ -616,9 +746,9 @@ var modified_worker = (function () {
 				return clearTimeout(id);
 			}
 
-			let __deter_old_postMessage__ = postMessage;
+			let __deter_old_postMessage__ = self.postMessage;
 			let __deter_postMessage_map__ = {};
-			postMessage = function () {
+			self.postMessage = function () {
 				let params = Array.prototype.slice.call(arguments);
 				let deter_event = __event_begin__(5, null, null, null);
 				//__deter_postMessage_map__[params[0]] = deter_event;
@@ -633,7 +763,8 @@ var modified_worker = (function () {
 			}
 
 			var __deter_old_this_onmessage__ = null;
-			onmessage = function () {
+			self.onmessage = function () {
+				__deter_dispatch__(0);
 				let params = Array.prototype.slice.call(arguments);
 				if (typeof params[0].data ==='object' && "deter_topic" in params[0].data) {
 					if (params[0].data.deter_topic == "_deter_postmessage_event_") {
@@ -644,6 +775,16 @@ var modified_worker = (function () {
 						old_setTimeout(__event_end__, 20, e);
 					} else if (params[0].data.deter_topic == "_deter_init_") {
 						deter_performance_base = params[0].data.deter_buf[0];
+						let shared_counter_buffer = params[0].data.deter_buf[1];
+						shared_counter = new Float32Array(shared_counter_buffer);
+					} else if (params[0].data.deter_topic == "_deter_recover_clock_") {
+						recover_clock_event_id = params[0].data.deter_buf;
+						if(__event_queue__.size() == 0){
+							__deter_old_postMessage__({
+								deter_topic: '_deter_recover_clock_',
+								deter_buf: recover_clock_event_id
+							});
+						}
 					}
 					return;
 				}
@@ -672,6 +813,30 @@ var modified_worker = (function () {
 
 				}
 			});
+
+	
+			let old_atomics_add = Atomics.add;
+			Atomics.add = function(){
+				let params = Array.prototype.slice.call(arguments);
+				let eet = shared_counter[1] + 1;
+				shared_counter[1] = eet;
+				//console.log("fafaew", shared_counter);
+				let deter_event = __event_insert__(eet, old_atomics_add, null, params);
+			}
+
+			let old_Uint32Array = Uint32Array;
+			Uint32Array = function(buffer){
+				real_array = new old_Uint32Array(buffer);
+				var handler = {
+    					set: function(obj, prop, val) {
+						let eet = shared_counter[1] + 2;
+						shared_counter[1] = eet;
+						let deter_event = __event_insert__(eet, function(){obj[prop]=val;}, null, null);
+						return true;
+    					}
+				};
+				return new Proxy(real_array, handler);
+			}
 
 			return {
 				src: "user worker file here",
@@ -724,10 +889,99 @@ var modified_worker = (function () {
 			let blob = new Blob(["(" + worker_inject_script_txt + ")()"], {
 				type: 'application/javascript'
 			});
-			console.log(userWorker.name);
-			console.log(userWorker.name.substring(0,5));
+			//console.log(userWorker.name);
+			//console.log(userWorker.name.substring(0,5));
 			if(userWorker.name.substring(0,5) == "/maps"){
-				var worker = new _deter_old_worker_(file_name);
+				var worker_function_1 = function () {
+					var domain = "domain here";
+					var pathname = "pathname here";
+					var worker_url = domain + pathname;
+					/*console.log("-----------------");
+					console.log("print here: " + location);
+					console.log("print here1: " + location.origin);
+					console.log("print here2: " + location.pathname);
+					console.log("print here3: " + location.protocol);
+					console.log("-----------------");*/
+
+					Object.defineProperty(self, "location", {
+						get href(){
+								return worker_url;
+						},
+						get origin(){
+								return domain;
+						},
+						get pathname(){
+								return pathname;
+						},
+						get host(){
+								return domain;
+						},
+						get: (obj, prop) => {
+							let params = Array.prototype.slice.call(arguments);
+							return {href: worker_url, origin: domain, pathname: pathname, protocol: "https:", toString: function(){return this.href}, host: domain};
+						}
+					});
+
+					var __deter_old_this_onmessage__ = null;
+					self.onmessage = function(){
+						let params = Array.prototype.slice.call(arguments);
+						if('deter_topic' in params[0].data || 'function' !== typeof __deter_old_this_onmessage__)return;
+						return __deter_old_this_onmessage__.apply(self, params);
+					}
+
+					Object.defineProperty(self, 'onmessage', {
+						set: function (e) {
+							__deter_old_this_onmessage__ = e;
+
+						}
+					});
+
+					let __deter_old_postMessage__ = self.postMessage;
+					deter_postMessage = function(){
+						let params = Array.prototype.slice.call(arguments);
+						//return 1;
+						if(!('id' in params[0]) || params[0].id < 40){
+							return __deter_old_postMessage__.apply(self, params);
+						}
+						else{
+							console.log(params);
+						}
+					}
+
+					Object.defineProperty(self, 'postMessage', {
+						set: function (e) {
+							__deter_old_postMessage__ = e;
+
+						},
+						get: function () {
+							return deter_postMessage;
+						}
+					});
+
+					/*console.log("print here: " + self.location);
+					console.log("print here1: " + self.location.origin);
+					console.log("print here2: " + self.location.pathname);
+					console.log("print here3: " + self.location.protocol);
+					console.log("-----------------");
+
+					console.log("print here: " + this.self.location);
+					console.log("print here1: " + this.self.location.origin);
+					console.log("print here2: " + this.self.location.pathname);
+					console.log("print here3: " + this.self.location.protocol);
+					console.log("-----------------");
+
+					console.log("print here: " + this.location);
+					console.log("print here1: " + this.location.origin);
+					console.log("print here2: " + this.location.pathname);
+					console.log("print here3: " + this.location.protocol);*/
+  					importScripts(worker_url);
+				}
+
+
+				var blob1 = new Blob(["(" + worker_function_1.toString().replace("domain here", domain).replace("pathname here", file_name) + ")()"]);
+				//var worker = new _deter_old_worker_(URL.createObjectURL(blob1), userWorker.options);
+				var worker = new _deter_old_worker_(domain + file_name);
+
 			}
 			else{
 				var worker = new _deter_old_worker_(URL.createObjectURL(blob));
@@ -781,11 +1035,13 @@ var modified_worker = (function () {
 			}
 		}
 	}
+	var deter_workers = [];
 	var worker_creator = {
 		construct: (obj, prop) => {
 			url = prop[0];
 			var myworker = {
-				name: url
+				name: url,
+				options: {'name':url}
 			};
 			let realworker = kernelInterface.constructWorker(myworker);
 			//let res = new Proxy(realworker, worker_handler);
@@ -804,16 +1060,24 @@ var modified_worker = (function () {
 			realworker.__deter_postMessage_placeholder_event__ = null;
 			realworker.onmessage = function(...args){
 				let params = Array.prototype.slice.call(arguments);
-				//if(this._deter_old_onmessage_ != null)this._deter_old_onmessage_.apply(null, params);
-				//else return _deter_old_onmessage_.apply(this, params);
-					//console.log(params[0].data);
+				let onmessage_event_handler = {
+				get: (obj, prop) => {
+					return prop == 'timeStamp' ? tmp_timeStamp : obj[prop];
+					}
+				};
+				let deter_onmessage_event = new Proxy(params[0], onmessage_event_handler);
+				//deter_event.params = [deter_onmessage_event];
+				//console.log(params[0]);
 				if (typeof params[0].data === "object" && "deter_topic" in params[0].data) {
-					//console.log("palceholder");
 					if (params[0].data.deter_topic == "_deter_postmessage_event_") {
 						let e = params[0].data.deter_buf;
 						this.__deter_postMessage_placeholder_event__ = e;
 						__event_queue__.push(e);
 						old_setTimeout(__event_end__, 20, e);
+					}
+					else if(params[0].data.deter_topic == "_deter_recover_clock_"){
+						let e = params[0].data.deter_buf;
+						__recover_clock_ack__(e);
 					}
 					return;
 				}
@@ -848,9 +1112,10 @@ var modified_worker = (function () {
 
 				}
 			});
+			deter_workers.push(realworker);
 			realworker.postMessage({
 				deter_topic: '_deter_init_',
-				deter_buf: [deter_performance_base]
+				deter_buf: [deter_performance_base, shared_counter_buffer]
 			});
 			//return res;
 			return realworker;
@@ -928,6 +1193,25 @@ function unit_test_worker2() {
 }
 
 //unit_test_worker2();
+
+var test_count = 0;
+
+function unit_test_multiple_setTimeout(){
+	for (let i = 1; i < 100; i += 1){
+		setTimeout(function(){test_count++;}, i);
+	}
+	start = test_count;
+	var oImg = document.createElement("img");
+	oImg.setAttribute('src', 'https://deterext.github.io/js/imgDecoding/9e5.png');
+	oImg.onerror = function(){
+  	end = test_count; 
+    console.log(test_count);
+    console.log("final count " + (end - start));
+   }
+	document.body.appendChild(oImg);
+}
+
+//unit_test_multiple_setTimeout();
 `;
 
 document.documentElement.appendChild(script);
