@@ -410,6 +410,54 @@ var modified_worker = (function () {
 		return old_appendChild.apply(this, arguments);
 	}
 
+	let video_start_time = {}
+	let hook_video = function(video){
+		if(typeof video.deter_play_hook == 'undefined'){
+			video_start_time[video] = null;
+			video.old_play = video.play;
+			video.play = function(){
+				let params = Array.prototype.slice.call(arguments);
+				video_start_time[video] = deter_performance_base + _deter_counter_;
+				//console.log("play", video_start_time[video]);
+				return video.old_play.apply(video, params);
+			}
+			video.deter_play_hook = true;
+		}
+		if(typeof video.deter_ac_hook == 'undefined'){
+			if(video.textTracks.length == 0)return [];
+			for(i=0; i < video.textTracks.length; i++){
+				track = video.textTracks[i];
+				old_object_defineProperty(track, "activeCues", {
+					get: function(){
+					        let start = video_start_time[video];
+						let current = deter_performance_base + _deter_counter_;
+						console.log("activeCues",start,current,current - start);
+						play_time = (current - start) / 1000;
+						//console.log(start, current, play_time);
+						//console.log(track.cues[0]);
+						for(k = 0; k < track.cues.length; k++){
+							if(track.cues[k].startTime <= play_time && track.cues[k].endTime >= play_time)return [track.cues[k]];
+						}
+						return [];
+					}
+				});
+			}
+			video.deter_ac_hook = true;
+		}
+	}
+
+	let old_document_getElementById = document.getElementById;
+	//let got_element = [];
+	document.getElementById = function() {
+		let params = Array.prototype.slice.call(arguments);
+		res = old_document_getElementById.apply(document, params);
+		if(res != null && res.tagName == "VIDEO"){
+            console.log(res);
+			hook_video(res);
+		}
+		return res;
+	}
+
 	let __deter_old_requestAnimationFrame__ = requestAnimationFrame;
 	let __deter_requestAnimationFrame_map__ = {};
 	requestAnimationFrame = function (cb) {
